@@ -1,0 +1,14 @@
+# 隱私與敏感連線資訊
+.env
+.env.*
+*.env
+
+# 本地開發與 Agent 暫存紀錄
+.scratch/
+.agents/
+skills-lock.json
+
+# 系統檔與日誌
+.DS_Store
+Thumbs.db
+*.log

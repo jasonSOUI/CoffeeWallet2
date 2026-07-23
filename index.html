@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+    <!-- Apple Web App Meta -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="CoffeeWallet">
+    <title>CoffeeWallet - 超商記杯與取杯紀錄</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Supabase JS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        coffee: {
+                            50: '#fffbeb',
+                            100: '#fef3c7',
+                            500: '#d97706',
+                            600: '#b45309',
+                            700: '#92400e',
+                            800: '#78350f',
+                            900: '#451a03',
+                            accent: '#f59e0b',
+                            dark: '#0f172a',
+                            card: 'rgba(30, 41, 59, 0.7)'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif'],
+                        outfit: ['Outfit', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #0b0f19;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(217, 119, 6, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(146, 64, 14, 0.12) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: #f8fafc;
+            /* 支援 iPhone 安全區與手機底部導覽列高度 */
+            padding-top: env(safe-area-inset-top);
+            padding-bottom: calc(env(safe-area-inset-bottom) + 80px);
+        }
+        @media (min-width: 640px) {
+            body {
+                padding-bottom: 2rem;
+            }
+        }
+        .glass-card {
+            background: rgba(30, 41, 59, 0.65);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        }
+        .glass-modal {
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+        .btn-glow {
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.35);
+        }
+        .btn-glow:hover {
+            box-shadow: 0 0 30px rgba(245, 158, 11, 0.55);
+        }
+        .coffee-progress {
+            transition: width 0.5s ease-in-out;
+        }
+        /* 防止 iOS 點擊輸入框時自動縮放頁面（必須 >= 16px） */
+        @media screen and (max-width: 767px) {
+            input, select, textarea {
+                font-size: 16px !important;
+            }
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(217, 119, 6, 0.4);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(245, 158, 11, 0.7);
+        }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased selection:bg-amber-500 selection:text-slate-900">
+
+    <!-- Toast Notification Container -->
+    <div id="toastContainer" class="fixed top-5 right-5 z-50 flex flex-col gap-3 max-w-sm pointer-events-none"></div>
+
+    <!-- Header / Navigation Bar -->
+    <header class="sticky top-0 z-30 backdrop-blur-md bg-slate-950/80 border-b border-slate-800/80 px-4 lg:px-8 py-3.5">
+        <div class="max-w-6xl mx-auto flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center text-slate-950 text-xl font-black shadow-lg shadow-amber-500/20">
+                    ☕
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold font-outfit tracking-wide bg-gradient-to-r from-amber-200 via-amber-400 to-amber-500 bg-clip-text text-transparent">
+                        CoffeeWallet
+                    </h1>
+                    <p class="text-xs text-slate-400">超商記杯與每日取杯紀錄</p>
+                </div>
+            </div>
+            
+            <div class="hidden sm:flex items-center gap-2" id="headerActions">
+                <button onclick="openModal('historyModal')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition">
+                    <span>📜</span>
+                    <span class="hidden sm:inline">歷史紀錄</span>
+                </button>
+                <button onclick="openModal('addItemModal')" class="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-md shadow-amber-500/20">
+                    <span>➕</span>
+                    <span>新增品項</span>
+                </button>
+                <button onclick="openModal('settingsModal')" class="p-1.5 rounded-lg bg-slate-800/90 hover:bg-slate-700 text-slate-400 hover:text-amber-400 text-sm border border-slate-700 transition" title="設定 / Supabase 連線">
+                    ⚙️
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-6xl mx-auto px-4 lg:px-8 mt-6">
+
+        <!-- 🔴 Access Denied Screen (Shown when URL key is missing or invalid) -->
+        <section id="accessDeniedView" class="hidden my-16 text-center">
+            <div class="glass-card max-w-md mx-auto p-8 rounded-3xl border border-red-500/20">
+                <div class="w-16 h-16 bg-red-500/10 text-red-400 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 border border-red-500/20">
+                    🔒
+                </div>
+                <h2 class="text-2xl font-bold text-slate-100 mb-2">權限不足 / 無效存取</h2>
+                <p class="text-sm text-slate-400 mb-6 leading-relaxed">
+                    本系統需要透過帶有專屬存取金鑰的 URL 開啟。<br>
+                    例如：<code class="text-amber-400 bg-slate-900/80 px-2 py-0.5 rounded border border-slate-800">?key=YOUR_SECRET_KEY</code>
+                </p>
+                <div class="space-y-3">
+                    <input type="password" id="inputAccessKey" placeholder="請輸入存取金鑰 (Secret Key)" class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-amber-500 text-center">
+                    <button onclick="submitAccessKey()" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition">
+                        驗證並解鎖進入 🔓
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- ⚙️ Configuration Setup Screen (Shown when Supabase URL/Key is missing) -->
+        <section id="configNeededView" class="hidden my-16 text-center">
+            <div class="glass-card max-w-lg mx-auto p-8 rounded-3xl border border-amber-500/20">
+                <div class="w-16 h-16 bg-amber-500/10 text-amber-400 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 border border-amber-500/20">
+                    ⚙️
+                </div>
+                <h2 class="text-2xl font-bold text-slate-100 mb-2">設定 Supabase 連線</h2>
+                <p class="text-sm text-slate-400 mb-6 leading-relaxed">
+                    初次使用請填入您的 Supabase 專案 URL 與 Anon Key。
+                </p>
+                <form onsubmit="saveConfig(event)" class="space-y-4 text-left">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Supabase URL</label>
+                        <input type="url" id="setupSupabaseUrl" required placeholder="https://xyz.supabase.co" class="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-amber-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">Supabase Anon Key</label>
+                        <input type="text" id="setupSupabaseAnonKey" required placeholder="eyJhbG..." class="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-amber-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-300 mb-1">自訂網址金鑰 (Master Key)</label>
+                        <input type="text" id="setupMasterKey" required placeholder="例如：mysecret123" class="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-amber-500">
+                        <p class="text-[11px] text-slate-500 mt-1">日後網址加上 <code class="text-amber-400">?key=您的自訂金鑰</code> 即可開啟權限。</p>
+                    </div>
+                    <button type="submit" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm transition shadow-lg shadow-amber-500/20">
+                        儲存連線並開啟 CoffeeWallet ☕
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <!-- 🟢 Main Dashboard Content (Shown when Key and Supabase Config are Valid) -->
+        <div id="mainDashboard" class="hidden space-y-6">
+
+            <!-- Summary Stats Banner -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 lg:gap-4">
+                <div class="glass-card p-4 rounded-2xl border border-slate-800">
+                    <p class="text-xs text-slate-400 font-medium mb-1">記杯總品項</p>
+                    <div class="flex items-baseline justify-between">
+                        <span id="statItemCount" class="text-2xl font-bold font-outfit text-slate-100">0</span>
+                        <span class="text-xs text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full">種</span>
+                    </div>
+                </div>
+                <div class="glass-card p-4 rounded-2xl border border-slate-800">
+                    <p class="text-xs text-slate-400 font-medium mb-1">總預購杯數</p>
+                    <div class="flex items-baseline justify-between">
+                        <span id="statTotalPurchased" class="text-2xl font-bold font-outfit text-amber-200">0</span>
+                        <span class="text-xs text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-full">杯</span>
+                    </div>
+                </div>
+                <div class="glass-card p-4 rounded-2xl border border-slate-800">
+                    <p class="text-xs text-slate-400 font-medium mb-1">已領取總數</p>
+                    <div class="flex items-baseline justify-between">
+                        <span id="statTotalRedeemed" class="text-2xl font-bold font-outfit text-slate-400">0</span>
+                        <span class="text-xs text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">杯</span>
+                    </div>
+                </div>
+                <div class="glass-card p-4 rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 to-transparent">
+                    <p class="text-xs text-amber-300 font-semibold mb-1">剩餘總杯數</p>
+                    <div class="flex items-baseline justify-between">
+                        <span id="statTotalRemaining" class="text-3xl font-extrabold font-outfit text-amber-400">0</span>
+                        <span class="text-xs text-amber-950 font-bold bg-amber-400 px-2 py-0.5 rounded-full">杯</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coffee Balance Cards Grid -->
+            <div class="flex items-center justify-between pt-2">
+                <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2">
+                    <span>☕</span> 記杯餘額卡片
+                </h2>
+                <button onclick="fetchCoffeeData()" class="text-xs text-slate-400 hover:text-amber-400 flex items-center gap-1 transition">
+                    🔄 重整資料
+                </button>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="cardsLoading" class="py-12 text-center text-slate-400">
+                <div class="inline-block animate-spin text-3xl text-amber-500 mb-2">⌛</div>
+                <p class="text-sm">正在載入 Supabase 記杯資料...</p>
+            </div>
+
+            <!-- Coffee Cards Container -->
+            <div id="cardsContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Rendered dynamically via JavaScript -->
+            </div>
+
+        </div>
+
+    </main>
+
+    <!-- ➕ Add New Coffee Item Modal -->
+    <div id="addItemModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div class="glass-modal max-w-md w-full p-6 rounded-3xl shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-lg font-bold text-amber-400 flex items-center gap-2">
+                    <span>✨</span> 新增咖啡品項與記杯
+                </h3>
+                <button onclick="closeModal('addItemModal')" class="text-slate-400 hover:text-slate-200">✕</button>
+            </div>
+            <form onsubmit="handleCreateItem(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">咖啡品項名稱</label>
+                    <input type="text" id="newItemName" required placeholder="例如：特大拿鐵、中杯美式" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-amber-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">品項分類</label>
+                    <select id="newItemCategory" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-amber-500">
+                        <option value="美式系列">美式系列</option>
+                        <option value="拿鐵系列">拿鐵系列</option>
+                        <option value="特選系列">特選系列</option>
+                        <option value="其他飲品">其他飲品</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">初始預購杯數</label>
+                    <input type="number" id="newItemQuantity" min="1" max="500" value="10" required class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-amber-500">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="closeModal('addItemModal')" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-sm">取消</button>
+                    <button type="submit" class="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm shadow-md shadow-amber-500/20">建立品項 🚀</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 🔢 Multi-cup Redeem Modal -->
+    <div id="multiRedeemModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div class="glass-modal max-w-sm w-full p-6 rounded-3xl shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-lg font-bold text-amber-400 flex items-center gap-2">
+                    <span>☕</span> 取杯 / 扣除數量
+                </h3>
+                <button onclick="closeModal('multiRedeemModal')" class="text-slate-400 hover:text-slate-200">✕</button>
+            </div>
+            <form onsubmit="handleMultiRedeemSubmit(event)" class="space-y-4">
+                <input type="hidden" id="multiRedeemItemId">
+                <div>
+                    <p class="text-xs text-slate-400">目前選擇品項：</p>
+                    <p id="multiRedeemItemName" class="text-base font-bold text-amber-200 mt-0.5"></p>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">取杯數量</label>
+                    <div class="grid grid-cols-4 gap-2 mb-2">
+                        <button type="button" onclick="setRedeemQty(1)" class="py-1.5 bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 border border-slate-700 rounded-lg text-xs font-semibold">1 杯</button>
+                        <button type="button" onclick="setRedeemQty(2)" class="py-1.5 bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 border border-slate-700 rounded-lg text-xs font-semibold">2 杯</button>
+                        <button type="button" onclick="setRedeemQty(3)" class="py-1.5 bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 border border-slate-700 rounded-lg text-xs font-semibold">3 杯</button>
+                        <button type="button" onclick="setRedeemQty(5)" class="py-1.5 bg-slate-800 hover:bg-amber-500/20 hover:text-amber-300 border border-slate-700 rounded-lg text-xs font-semibold">5 杯</button>
+                    </div>
+                    <input type="number" id="multiRedeemQuantity" min="1" required value="1" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-amber-500 text-center font-bold text-lg">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">備註 (可選，如超商門市名)</label>
+                    <input type="text" id="multiRedeemNote" placeholder="如：7-11 鑫東門門市" class="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="closeModal('multiRedeemModal')" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-sm">取消</button>
+                    <button type="submit" class="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm">確認扣除 ☕</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- ➕ Top-Up Existing Item Modal -->
+    <div id="topupModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div class="glass-modal max-w-sm w-full p-6 rounded-3xl shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-lg font-bold text-amber-400 flex items-center gap-2">
+                    <span>🛒</span> 加購 / 累加預購杯數
+                </h3>
+                <button onclick="closeModal('topupModal')" class="text-slate-400 hover:text-slate-200">✕</button>
+            </div>
+            <form onsubmit="handleTopupSubmit(event)" class="space-y-4">
+                <input type="hidden" id="topupItemId">
+                <div>
+                    <p class="text-xs text-slate-400">品項：</p>
+                    <p id="topupItemName" class="text-base font-bold text-amber-200 mt-0.5"></p>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">新加購杯數</label>
+                    <input type="number" id="topupQuantity" min="1" required value="10" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-amber-500 text-center font-bold text-lg">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">備註 (可選，如活動折扣)</label>
+                    <input type="text" id="topupNote" placeholder="如：買 10 送 2 活動" class="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-200 focus:outline-none focus:border-amber-500">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="closeModal('topupModal')" class="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-sm">取消</button>
+                    <button type="submit" class="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm">確認加購 🛒</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 📜 History Timeline Modal -->
+    <div id="historyModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div class="glass-modal max-w-2xl w-full p-6 rounded-3xl shadow-2xl flex flex-col max-h-[85vh]">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-lg font-bold text-amber-400 flex items-center gap-2">
+                    <span>📜</span> 取杯與加購歷程紀錄
+                </h3>
+                <button onclick="closeModal('historyModal')" class="text-slate-400 hover:text-slate-200">✕</button>
+            </div>
+            <div class="overflow-y-auto my-4 space-y-3 pr-2 flex-1" id="historyList">
+                <!-- Logs rendered dynamically -->
+            </div>
+            <div class="border-t border-slate-800 pt-3 flex justify-end">
+                <button onclick="closeModal('historyModal')" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ⚙️ Settings Modal -->
+    <div id="settingsModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+        <div class="glass-modal max-w-md w-full p-6 rounded-3xl shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+                <h3 class="text-lg font-bold text-amber-400 flex items-center gap-2">
+                    <span>⚙️</span> Supabase 與 金鑰設定
+                </h3>
+                <button onclick="closeModal('settingsModal')" class="text-slate-400 hover:text-slate-200">✕</button>
+            </div>
+            <form onsubmit="saveConfig(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Supabase URL</label>
+                    <input type="url" id="settingSupabaseUrl" required class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-200">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">Supabase Anon Key</label>
+                    <input type="text" id="settingSupabaseAnonKey" required class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-200">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-300 mb-1">網址存取金鑰 (Master Key)</label>
+                    <input type="text" id="settingMasterKey" required class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-200">
+                </div>
+                <div class="flex gap-2 pt-2">
+                    <button type="button" onclick="clearConfig()" class="py-2.5 px-4 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 font-semibold text-xs border border-red-500/30">清除設定</button>
+                    <button type="submit" class="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs">儲存設定</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 📱 Mobile Sticky Bottom Navigation (Only visible on mobile screens) -->
+    <div id="mobileBottomNav" class="hidden sm:hidden fixed bottom-0 left-0 right-0 z-40 bg-slate-950/80 backdrop-blur-lg border-t border-slate-800/80 px-6 pt-3 pb-[calc(10px+env(safe-area-inset-bottom))] flex justify-around items-center">
+        <button onclick="fetchCoffeeData()" class="flex flex-col items-center gap-1 text-slate-400 hover:text-amber-400 transition" title="重整資料">
+            <span class="text-xl">🔄</span>
+            <span class="text-[10px] font-medium">重整</span>
+        </button>
+        <button onclick="openModal('historyModal')" class="flex flex-col items-center gap-1 text-slate-400 hover:text-amber-400 transition" title="歷史紀錄">
+            <span class="text-xl">📜</span>
+            <span class="text-[10px] font-medium">歷史</span>
+        </button>
+        <button onclick="openModal('addItemModal')" class="flex flex-col items-center gap-1 text-slate-400 hover:text-amber-400 transition" title="新增品項">
+            <div class="w-10 h-10 -mt-5 rounded-full bg-amber-500 hover:bg-amber-400 text-slate-950 flex items-center justify-center shadow-lg shadow-amber-500/35 border-4 border-slate-950 transition transform hover:scale-105 active:scale-95">
+                <span class="text-sm font-bold">➕</span>
+            </div>
+            <span class="text-[10px] font-medium text-amber-400">新增</span>
+        </button>
+        <button onclick="openModal('settingsModal')" class="flex flex-col items-center gap-1 text-slate-400 hover:text-amber-400 transition" title="連線設定">
+            <span class="text-xl">⚙️</span>
+            <span class="text-[10px] font-medium">設定</span>
+        </button>
+    </div>
+
+    <!-- Application Script -->
+    <script>
+        // App State Variables
+        let supabaseClient = null;
+        let coffeeItems = [];
+        let coffeeLogs = [];
+
+        // 1. Initialization on DOM Load
+        document.addEventListener('DOMContentLoaded', () => {
+            initApp();
+        });
+
+        function initApp() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const setupUrl = urlParams.get('setup_url');
+            const setupAnon = urlParams.get('setup_anon');
+            const setupKey = urlParams.get('setup_key') || urlParams.get('key');
+
+            // 一鍵設定邏輯：如果網址帶有 setup_url 與 setup_anon，就將其寫入 localStorage 儲存
+            if (setupUrl && setupAnon) {
+                localStorage.setItem('cw_supabase_url', sanitizeSupabaseUrl(setupUrl));
+                localStorage.setItem('cw_supabase_anon_key', setupAnon.trim());
+                if (setupKey) {
+                    localStorage.setItem('cw_master_key', setupKey.trim());
+                }
+                
+                showToast('🔑 連線設定已成功儲存！正在載入...', 'success');
+                setTimeout(() => {
+                    // 重新導向至乾淨的網址，只保留驗證 key
+                    const cleanParams = new URLSearchParams();
+                    if (setupKey) {
+                        cleanParams.set('key', setupKey.trim());
+                    }
+                    window.location.search = cleanParams.toString();
+                }, 1000);
+                return;
+            }
+
+            const config = getConfig();
+            const urlKey = urlParams.get('key');
+
+            // 若尚未設定 Supabase 連線 -> 顯示連線設定畫面
+            if (!config.supabaseUrl || !config.supabaseAnonKey) {
+                showView('configNeededView');
+                return;
+            }
+
+            // 驗證進入金鑰
+            const masterKey = config.masterKey;
+            if (!masterKey || !urlKey || urlKey !== masterKey) {
+                // 金鑰缺失或不符 -> 顯示拒絕存取畫面
+                showView('accessDeniedView');
+                return;
+            }
+
+            // 初始化 Supabase Client
+            try {
+                supabaseClient = supabase.createClient(config.supabaseUrl, config.supabaseAnonKey);
+                showView('mainDashboard');
+                fetchCoffeeData();
+            } catch (err) {
+                showToast('❌ Supabase 連線初始化失敗，請檢查金鑰設定', 'error');
+                showView('configNeededView');
+            }
+        }
+
+        // Local Storage Config Helper
+        function sanitizeSupabaseUrl(url) {
+            if (!url) return '';
+            return url.trim().replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+        }
+
+        function getConfig() {
+            const rawUrl = localStorage.getItem('cw_supabase_url') || '';
+            const rawKey = localStorage.getItem('cw_supabase_anon_key') || '';
+            const masterKey = localStorage.getItem('cw_master_key') || '';
+            
+            return {
+                supabaseUrl: sanitizeSupabaseUrl(rawUrl),
+                supabaseAnonKey: rawKey.trim(),
+                masterKey: masterKey.trim()
+            };
+        }
+
+        function saveConfig(e) {
+            e.preventDefault();
+            const url = document.getElementById('setupSupabaseUrl')?.value || document.getElementById('settingSupabaseUrl')?.value;
+            const key = document.getElementById('setupSupabaseAnonKey')?.value || document.getElementById('settingSupabaseAnonKey')?.value;
+            const master = document.getElementById('setupMasterKey')?.value || document.getElementById('settingMasterKey')?.value;
+
+            localStorage.setItem('cw_supabase_url', sanitizeSupabaseUrl(url));
+            localStorage.setItem('cw_supabase_anon_key', key.trim());
+            localStorage.setItem('cw_master_key', master.trim());
+
+            showToast('✅ 設定已更新，重新載入中...', 'success');
+            setTimeout(() => {
+                window.location.search = `?key=${master.trim()}`;
+            }, 800);
+        }
+
+        function clearConfig() {
+            if (confirm('確定要清除儲存的 Supabase 與金鑰設定嗎？')) {
+                localStorage.removeItem('cw_supabase_url');
+                localStorage.removeItem('cw_supabase_anon_key');
+                localStorage.removeItem('cw_master_key');
+                location.reload();
+            }
+        }
+
+        function submitAccessKey() {
+            const inputKey = document.getElementById('inputAccessKey').value.trim();
+            if (inputKey) {
+                window.location.search = `?key=${encodeURIComponent(inputKey)}`;
+            }
+        }
+
+        function showView(viewId) {
+            document.getElementById('accessDeniedView').classList.add('hidden');
+            document.getElementById('configNeededView').classList.add('hidden');
+            document.getElementById('mainDashboard').classList.add('hidden');
+            document.getElementById(viewId).classList.remove('hidden');
+
+            // 手機版底部導覽控制
+            const mobileNav = document.getElementById('mobileBottomNav');
+            if (mobileNav) {
+                if (viewId === 'mainDashboard') {
+                    mobileNav.classList.remove('hidden');
+                } else {
+                    mobileNav.classList.add('hidden');
+                }
+            }
+
+            // Prefill Settings Inputs
+            const config = getConfig();
+            if (document.getElementById('settingSupabaseUrl')) {
+                document.getElementById('settingSupabaseUrl').value = config.supabaseUrl;
+                document.getElementById('settingSupabaseAnonKey').value = config.supabaseAnonKey;
+                document.getElementById('settingMasterKey').value = config.masterKey;
+            }
+        }
+
+        // 2. Data Fetching from Supabase
+        async function fetchCoffeeData() {
+            if (!supabaseClient) return;
+
+            document.getElementById('cardsLoading').classList.remove('hidden');
+            document.getElementById('cardsContainer').innerHTML = '';
+
+            try {
+                // Fetch Coffee Items
+                const { data: items, error: itemsErr } = await supabaseClient
+                    .from('coffee_items')
+                    .select('*')
+                    .order('created_at', { ascending: true });
+
+                if (itemsErr) throw itemsErr;
+                coffeeItems = items || [];
+
+                // Fetch Logs
+                const { data: logs, error: logsErr } = await supabaseClient
+                    .from('coffee_logs')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (logsErr) throw logsErr;
+                coffeeLogs = logs || [];
+
+                renderDashboard();
+            } catch (err) {
+                console.error(err);
+                showToast(`❌ 資料載入失敗: ${err.message || '請確認 SQL 建表腳本已執行'}`, 'error');
+            } finally {
+                document.getElementById('cardsLoading').classList.add('hidden');
+            }
+        }
+
+        // 3. Render Dashboard UI
+        function renderDashboard() {
+            // Stats calculation
+            const itemCount = coffeeItems.length;
+            const totalPurchased = coffeeItems.reduce((acc, item) => acc + item.total_purchased, 0);
+            const totalRedeemed = coffeeItems.reduce((acc, item) => acc + item.total_redeemed, 0);
+            const totalRemaining = totalPurchased - totalRedeemed;
+
+            document.getElementById('statItemCount').innerText = itemCount;
+            document.getElementById('statTotalPurchased').innerText = totalPurchased;
+            document.getElementById('statTotalRedeemed').innerText = totalRedeemed;
+            document.getElementById('statTotalRemaining').innerText = Math.max(0, totalRemaining);
+
+            // Render Coffee Cards
+            const container = document.getElementById('cardsContainer');
+            if (coffeeItems.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full py-12 text-center glass-card rounded-3xl border border-slate-800">
+                        <span class="text-4xl">☕</span>
+                        <p class="text-slate-300 font-bold mt-2">目前尚無咖啡記杯品項</p>
+                        <p class="text-xs text-slate-500 mt-1">點擊上方「新增品項」按鈕來新增您的第一筆記杯吧！</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Sort items by remaining cups (descending: high to low)
+            const sortedItems = [...coffeeItems].sort((a, b) => {
+                const remA = Math.max(0, a.total_purchased - a.total_redeemed);
+                const remB = Math.max(0, b.total_purchased - b.total_redeemed);
+                return remB - remA;
+            });
+
+            container.innerHTML = sortedItems.map(item => {
+                const remaining = Math.max(0, item.total_purchased - item.total_redeemed);
+                const percent = item.total_purchased > 0 ? Math.min(100, Math.round((remaining / item.total_purchased) * 100)) : 0;
+                
+                return `
+                    <div class="glass-card rounded-3xl p-4 sm:p-5 border border-slate-800/80 hover:border-amber-500/40 transition duration-300 flex flex-col justify-between group">
+                        <div>
+                            <!-- Header: Name & Category Badge -->
+                            <div class="flex items-start justify-between gap-2 mb-3">
+                                <div>
+                                    <span class="inline-block text-[10px] font-semibold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded-md mb-1 border border-amber-400/20">
+                                        ${escapeHtml(item.category || '咖啡')}
+                                    </span>
+                                    <h3 class="text-base sm:text-lg font-bold text-slate-100 group-hover:text-amber-300 transition">
+                                        ${escapeHtml(item.name)}
+                                    </h3>
+                                </div>
+                                <button onclick="handleDeleteItem('${item.id}', '${escapeHtml(item.name)}')" class="text-slate-500 hover:text-red-400 p-1 text-xs opacity-60 sm:opacity-0 group-hover:opacity-100 transition" title="刪除此品項">
+                                    🗑️
+                                </button>
+                            </div>
+
+                            <!-- Remaining Cups Big Number -->
+                            <div class="my-3 sm:my-4 flex items-baseline justify-between bg-slate-900/60 p-3 sm:p-3.5 rounded-2xl border border-slate-800">
+                                <span class="text-xs text-slate-400 font-medium">剩餘杯數</span>
+                                <div class="flex items-baseline gap-1">
+                                    <span class="text-2xl sm:text-3xl font-black font-outfit text-amber-400 tracking-tight">${remaining}</span>
+                                    <span class="text-xs text-slate-400 font-medium">/ ${item.total_purchased} 杯</span>
+                                </div>
+                            </div>
+
+                            <!-- Progress Bar -->
+                            <div class="space-y-1 mb-4 sm:mb-5">
+                                <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                                    <div class="h-full bg-gradient-to-r from-amber-600 to-amber-400 coffee-progress rounded-full" style="width: ${percent}%"></div>
+                                </div>
+                                <div class="flex justify-between text-[11px] text-slate-500">
+                                    <span>已取 ${item.total_redeemed} 杯</span>
+                                    <span>存量 ${percent}%</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="space-y-2 pt-2 border-t border-slate-800/80">
+                            <button onclick="handleQuickRedeem('${item.id}', '${escapeHtml(item.name)}', ${remaining})" ${remaining <= 0 ? 'disabled' : ''} 
+                                class="w-full py-3 sm:py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:from-slate-800 disabled:to-slate-800 disabled:text-slate-600 text-slate-950 font-bold text-sm sm:text-xs transition shadow-md shadow-amber-500/10 flex items-center justify-center gap-1.5">
+                                <span>⚡</span>
+                                <span>快速扣 1 杯</span>
+                            </button>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button onclick="openMultiRedeemModal('${item.id}', '${escapeHtml(item.name)}')" ${remaining <= 0 ? 'disabled' : ''} 
+                                    class="py-2 sm:py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 text-xs font-semibold transition border border-slate-700">
+                                    🔢 扣除多杯
+                                </button>
+                                <button onclick="openTopupModal('${item.id}', '${escapeHtml(item.name)}')" 
+                                    class="py-2 sm:py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition border border-slate-700">
+                                    🛒 加購記杯
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // 4. Quick Actions & Handlers
+        async function handleQuickRedeem(itemId, itemName, currentRemaining) {
+            if (currentRemaining <= 0) {
+                showToast('⚠️ 剩餘杯數不足！', 'error');
+                return;
+            }
+
+            try {
+                // Get item current total_redeemed
+                const item = coffeeItems.find(i => i.id === itemId);
+                if (!item) return;
+
+                const newRedeemed = item.total_redeemed + 1;
+
+                // Update coffee_items
+                const { error: updateErr } = await supabaseClient
+                    .from('coffee_items')
+                    .update({ total_redeemed: newRedeemed, updated_at: new Date().toISOString() })
+                    .eq('id', itemId);
+
+                if (updateErr) throw updateErr;
+
+                // Write log to coffee_logs
+                const { error: logErr } = await supabaseClient
+                    .from('coffee_logs')
+                    .insert([{
+                        item_id: itemId,
+                        item_name: itemName,
+                        type: 'redeem',
+                        quantity: 1,
+                        note: '快速取杯 -1'
+                    }]);
+
+                if (logErr) throw logErr;
+
+                showToast(`🎉 成功取用 1 杯「${itemName}」！`, 'success');
+                fetchCoffeeData();
+            } catch (err) {
+                console.error(err);
+                showToast(`❌ 扣杯失敗: ${err.message}`, 'error');
+            }
+        }
+
+        async function handleMultiRedeemSubmit(e) {
+            e.preventDefault();
+            const itemId = document.getElementById('multiRedeemItemId').value;
+            const itemName = document.getElementById('multiRedeemItemName').innerText;
+            const qty = parseInt(document.getElementById('multiRedeemQuantity').value) || 1;
+            const note = document.getElementById('multiRedeemNote').value.trim() || '多杯取用';
+
+            const item = coffeeItems.find(i => i.id === itemId);
+            if (!item) return;
+
+            const remaining = item.total_purchased - item.total_redeemed;
+            if (qty > remaining) {
+                showToast(`⚠️ 取用數量 (${qty} 杯) 超出剩餘杯數 (${remaining} 杯)！`, 'error');
+                return;
+            }
+
+            try {
+                const newRedeemed = item.total_redeemed + qty;
+
+                // Update items
+                const { error: updateErr } = await supabaseClient
+                    .from('coffee_items')
+                    .update({ total_redeemed: newRedeemed, updated_at: new Date().toISOString() })
+                    .eq('id', itemId);
+
+                if (updateErr) throw updateErr;
+
+                // Insert log
+                const { error: logErr } = await supabaseClient
+                    .from('coffee_logs')
+                    .insert([{
+                        item_id: itemId,
+                        item_name: itemName,
+                        type: 'redeem',
+                        quantity: qty,
+                        note: note
+                    }]);
+
+                if (logErr) throw logErr;
+
+                closeModal('multiRedeemModal');
+                showToast(`🎉 成功取用 ${qty} 杯「${itemName}」！`, 'success');
+                fetchCoffeeData();
+            } catch (err) {
+                console.error(err);
+                showToast(`❌ 操作失敗: ${err.message}`, 'error');
+            }
+        }
+
+        async function handleTopupSubmit(e) {
+            e.preventDefault();
+            const itemId = document.getElementById('topupItemId').value;
+            const itemName = document.getElementById('topupItemName').innerText;
+            const qty = parseInt(document.getElementById('topupQuantity').value) || 1;
+            const note = document.getElementById('topupNote').value.trim() || '加購預購杯數';
+
+            const item = coffeeItems.find(i => i.id === itemId);
+            if (!item) return;
+
+            try {
+                const newTotal = item.total_purchased + qty;
+
+                // Update item
+                const { error: updateErr } = await supabaseClient
+                    .from('coffee_items')
+                    .update({ total_purchased: newTotal, updated_at: new Date().toISOString() })
+                    .eq('id', itemId);
+
+                if (updateErr) throw updateErr;
+
+                // Insert log
+                const { error: logErr } = await supabaseClient
+                    .from('coffee_logs')
+                    .insert([{
+                        item_id: itemId,
+                        item_name: itemName,
+                        type: 'topup',
+                        quantity: qty,
+                        note: note
+                    }]);
+
+                if (logErr) throw logErr;
+
+                closeModal('topupModal');
+                showToast(`🛒 成功為「${itemName}」加購 ${qty} 杯！`, 'success');
+                fetchCoffeeData();
+            } catch (err) {
+                console.error(err);
+                showToast(`❌ 加購失敗: ${err.message}`, 'error');
+            }
+        }
+
+        async function handleCreateItem(e) {
+            e.preventDefault();
+            const name = document.getElementById('newItemName').value.trim();
+            const category = document.getElementById('newItemCategory').value;
+            const qty = parseInt(document.getElementById('newItemQuantity').value) || 10;
+
+            if (!name) return;
+
+            try {
+                // Insert item into coffee_items
+                const { data, error: itemErr } = await supabaseClient
+                    .from('coffee_items')
+                    .insert([{
+                        name: name,
+                        category: category,
+                        total_purchased: qty,
+                        total_redeemed: 0
+                    }])
+                    .select();
+
+                if (itemErr) throw itemErr;
+
+                const newItem = data[0];
+
+                // Write initial log
+                await supabaseClient
+                    .from('coffee_logs')
+                    .insert([{
+                        item_id: newItem.id,
+                        item_name: name,
+                        type: 'create',
+                        quantity: qty,
+                        note: `新增記杯品項 ${qty} 杯`
+                    }]);
+
+                closeModal('addItemModal');
+                showToast(`✨ 成功新增品項「${name}」(${qty} 杯)！`, 'success');
+                document.getElementById('newItemName').value = '';
+                fetchCoffeeData();
+            } catch (err) {
+                console.error(err);
+                showToast(`❌ 新增品項失敗: ${err.message}`, 'error');
+            }
+        }
+
+        async function handleDeleteItem(itemId, itemName) {
+            if (confirm(`確定要刪除「${itemName}」這個咖啡品項嗎？（歷史紀錄仍會保留）`)) {
+                try {
+                    const { error } = await supabaseClient
+                        .from('coffee_items')
+                        .delete()
+                        .eq('id', itemId);
+
+                    if (error) throw error;
+
+                    showToast(`🗑️ 已刪除「${itemName}」`, 'success');
+                    fetchCoffeeData();
+                } catch (err) {
+                    showToast(`❌ 刪除失敗: ${err.message}`, 'error');
+                }
+            }
+        }
+
+        async function handleDeleteLog(logId, type, itemId, quantity) {
+            if (!confirm('確定要復原/刪除此筆紀錄嗎？這將會回滾對應的杯數數量。')) return;
+
+            try {
+                // If it's a redeem log, deleting it should reduce total_redeemed
+                // If it's a topup log, deleting it should reduce total_purchased
+                const item = coffeeItems.find(i => i.id === itemId);
+                if (item) {
+                    let updateData = {};
+                    if (type === 'redeem') {
+                        updateData.total_redeemed = Math.max(0, item.total_redeemed - quantity);
+                    } else if (type === 'topup') {
+                        updateData.total_purchased = Math.max(0, item.total_purchased - quantity);
+                    }
+
+                    if (Object.keys(updateData).length > 0) {
+                        await supabaseClient
+                            .from('coffee_items')
+                            .update(updateData)
+                            .eq('id', itemId);
+                    }
+                }
+
+                // Delete log
+                const { error } = await supabaseClient
+                    .from('coffee_logs')
+                    .delete()
+                    .eq('id', logId);
+
+                if (error) throw error;
+
+                showToast('✅ 已復原該筆紀錄並調整杯數', 'success');
+                fetchCoffeeData();
+                renderHistoryModal();
+            } catch (err) {
+                showToast(`❌ 復原失敗: ${err.message}`, 'error');
+            }
+        }
+
+        // Modals & UI Helpers
+        function openModal(modalId) {
+            document.getElementById(modalId).classList.remove('hidden');
+            if (modalId === 'historyModal') {
+                renderHistoryModal();
+            }
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+        }
+
+        function openMultiRedeemModal(itemId, itemName) {
+            document.getElementById('multiRedeemItemId').value = itemId;
+            document.getElementById('multiRedeemItemName').innerText = itemName;
+            document.getElementById('multiRedeemQuantity').value = 1;
+            document.getElementById('multiRedeemNote').value = '';
+            openModal('multiRedeemModal');
+        }
+
+        function setRedeemQty(qty) {
+            document.getElementById('multiRedeemQuantity').value = qty;
+        }
+
+        function openTopupModal(itemId, itemName) {
+            document.getElementById('topupItemId').value = itemId;
+            document.getElementById('topupItemName').innerText = itemName;
+            document.getElementById('topupQuantity').value = 10;
+            document.getElementById('topupNote').value = '';
+            openModal('topupModal');
+        }
+
+        function renderHistoryModal() {
+            const listContainer = document.getElementById('historyList');
+            if (coffeeLogs.length === 0) {
+                listContainer.innerHTML = `<p class="text-center text-xs text-slate-500 py-8">尚無任何歷程紀錄</p>`;
+                return;
+            }
+
+            listContainer.innerHTML = coffeeLogs.map(log => {
+                const dateStr = new Date(log.created_at).toLocaleString('zh-TW', { hour12: false });
+                let typeBadge = '';
+                let qtyText = '';
+
+                if (log.type === 'redeem') {
+                    typeBadge = `<span class="bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded text-[11px] font-semibold">取杯 -${log.quantity}</span>`;
+                    qtyText = `<span class="text-amber-400 font-bold">-${log.quantity} 杯</span>`;
+                } else if (log.type === 'topup') {
+                    typeBadge = `<span class="bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded text-[11px] font-semibold">加購 +${log.quantity}</span>`;
+                    qtyText = `<span class="text-emerald-400 font-bold">+${log.quantity} 杯</span>`;
+                } else {
+                    typeBadge = `<span class="bg-blue-500/20 text-blue-300 border border-blue-500/30 px-2 py-0.5 rounded text-[11px] font-semibold">建立品項</span>`;
+                    qtyText = `<span class="text-blue-400 font-bold">+${log.quantity} 杯</span>`;
+                }
+
+                return `
+                    <div class="p-3 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-between text-xs hover:border-slate-700 transition">
+                        <div class="space-y-1">
+                            <div class="flex items-center gap-2">
+                                ${typeBadge}
+                                <span class="font-bold text-slate-200">${escapeHtml(log.item_name)}</span>
+                            </div>
+                            <div class="text-[11px] text-slate-500 flex items-center gap-3">
+                                <span>🕒 ${dateStr}</span>
+                                ${log.note ? `<span class="text-slate-400">📝 ${escapeHtml(log.note)}</span>` : ''}
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <div class="text-right">${qtyText}</div>
+                            ${log.type !== 'create' ? `
+                                <button onclick="handleDeleteLog('${log.id}', '${log.type}', '${log.item_id}', ${log.quantity})" class="text-slate-600 hover:text-red-400 p-1" title="復原此紀錄">
+                                    ✕
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // Toast Notification System
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            toast.className = `px-4 py-3 rounded-2xl shadow-xl text-xs font-semibold text-slate-100 backdrop-blur-md border transition-all duration-300 transform translate-y-2 opacity-0 flex items-center gap-2 ${
+                type === 'success' ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200' :
+                type === 'error' ? 'bg-red-950/90 border-red-500/40 text-red-200' :
+                'bg-slate-900/90 border-amber-500/30 text-amber-200'
+            }`;
+            toast.innerHTML = message;
+            container.appendChild(toast);
+
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            });
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+    </script>
+</body>
+</html>
