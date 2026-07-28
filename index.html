@@ -141,26 +141,6 @@
     <!-- Main Container -->
     <main class="max-w-6xl mx-auto px-4 lg:px-8 mt-6">
 
-        <!-- 🔴 Access Denied Screen (Shown when URL key is missing or invalid) -->
-        <section id="accessDeniedView" class="hidden my-16 text-center">
-            <div class="glass-card max-w-md mx-auto p-8 rounded-3xl border border-red-500/20">
-                <div class="w-16 h-16 bg-red-500/10 text-red-400 rounded-2xl flex items-center justify-center text-3xl mx-auto mb-4 border border-red-500/20">
-                    🔒
-                </div>
-                <h2 class="text-2xl font-bold text-slate-100 mb-2">權限不足 / 無效存取</h2>
-                <p class="text-sm text-slate-400 mb-6 leading-relaxed">
-                    本系統需要透過帶有專屬存取金鑰的 URL 開啟。<br>
-                    例如：<code class="text-amber-400 bg-slate-900/80 px-2 py-0.5 rounded border border-slate-800">?key=YOUR_SECRET_KEY</code>
-                </p>
-                <div class="space-y-3">
-                    <input type="password" id="inputAccessKey" placeholder="請輸入存取金鑰 (Secret Key)" class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-amber-500 text-center">
-                    <button onclick="submitAccessKey()" class="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm transition">
-                        驗證並解鎖進入 🔓
-                    </button>
-                </div>
-            </div>
-        </section>
-
         <!-- ⚙️ Configuration Setup Screen (Shown when Supabase URL/Key is missing) -->
         <section id="configNeededView" class="hidden my-16 text-center">
             <div class="glass-card max-w-lg mx-auto p-8 rounded-3xl border border-amber-500/20">
@@ -179,11 +159,6 @@
                     <div>
                         <label class="block text-xs font-semibold text-slate-300 mb-1">Supabase Anon Key</label>
                         <input type="text" id="setupSupabaseAnonKey" required placeholder="eyJhbG..." class="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-amber-500">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-300 mb-1">自訂網址金鑰 (Master Key)</label>
-                        <input type="text" id="setupMasterKey" required placeholder="例如：mysecret123" class="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-sm text-slate-200 focus:outline-none focus:border-amber-500">
-                        <p class="text-[11px] text-slate-500 mt-1">日後網址加上 <code class="text-amber-400">?key=您的自訂金鑰</code> 即可開啟權限。</p>
                     </div>
                     <button type="submit" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-sm transition shadow-lg shadow-amber-500/20">
                         儲存連線並開啟 CoffeeWallet ☕
@@ -378,7 +353,7 @@
         <div class="glass-modal max-w-md w-full p-6 rounded-3xl shadow-2xl space-y-4">
             <div class="flex items-center justify-between border-b border-slate-800 pb-3">
                 <h3 class="text-lg font-bold text-amber-400 flex items-center gap-2">
-                    <span>⚙️</span> Supabase 與 金鑰設定
+                    <span>⚙️</span> Supabase 連線設定
                 </h3>
                 <button onclick="closeModal('settingsModal')" class="text-slate-400 hover:text-slate-200">✕</button>
             </div>
@@ -390,10 +365,6 @@
                 <div>
                     <label class="block text-xs font-semibold text-slate-300 mb-1">Supabase Anon Key</label>
                     <input type="text" id="settingSupabaseAnonKey" required class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-200">
-                </div>
-                <div>
-                    <label class="block text-xs font-semibold text-slate-300 mb-1">網址存取金鑰 (Master Key)</label>
-                    <input type="text" id="settingMasterKey" required class="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-slate-200">
                 </div>
                 <div class="flex gap-2 pt-2">
                     <button type="button" onclick="clearConfig()" class="py-2.5 px-4 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 font-semibold text-xs border border-red-500/30">清除設定</button>
@@ -441,42 +412,25 @@
             const urlParams = new URLSearchParams(window.location.search);
             const setupUrl = urlParams.get('setup_url');
             const setupAnon = urlParams.get('setup_anon');
-            const setupKey = urlParams.get('setup_key') || urlParams.get('key');
 
             // 一鍵設定邏輯：如果網址帶有 setup_url 與 setup_anon，就將其寫入 localStorage 儲存
             if (setupUrl && setupAnon) {
                 localStorage.setItem('cw_supabase_url', sanitizeSupabaseUrl(setupUrl));
                 localStorage.setItem('cw_supabase_anon_key', setupAnon.trim());
-                if (setupKey) {
-                    localStorage.setItem('cw_master_key', setupKey.trim());
-                }
                 
                 showToast('🔑 連線設定已成功儲存！正在載入...', 'success');
                 setTimeout(() => {
-                    // 重新導向至乾淨的網址，只保留驗證 key
-                    const cleanParams = new URLSearchParams();
-                    if (setupKey) {
-                        cleanParams.set('key', setupKey.trim());
-                    }
-                    window.location.search = cleanParams.toString();
+                    // 重新導向至乾淨的網址
+                    window.location.href = window.location.pathname;
                 }, 1000);
                 return;
             }
 
             const config = getConfig();
-            const urlKey = urlParams.get('key');
 
             // 若尚未設定 Supabase 連線 -> 顯示連線設定畫面
             if (!config.supabaseUrl || !config.supabaseAnonKey) {
                 showView('configNeededView');
-                return;
-            }
-
-            // 驗證進入金鑰
-            const masterKey = config.masterKey;
-            if (!masterKey || !urlKey || urlKey !== masterKey) {
-                // 金鑰缺失或不符 -> 顯示拒絕存取畫面
-                showView('accessDeniedView');
                 return;
             }
 
@@ -486,7 +440,7 @@
                 showView('mainDashboard');
                 fetchCoffeeData();
             } catch (err) {
-                showToast('❌ Supabase 連線初始化失敗，請檢查金鑰設定', 'error');
+                showToast('❌ Supabase 連線初始化失敗，請檢查連線設定', 'error');
                 showView('configNeededView');
             }
         }
@@ -500,12 +454,10 @@
         function getConfig() {
             const rawUrl = localStorage.getItem('cw_supabase_url') || '';
             const rawKey = localStorage.getItem('cw_supabase_anon_key') || '';
-            const masterKey = localStorage.getItem('cw_master_key') || '';
             
             return {
                 supabaseUrl: sanitizeSupabaseUrl(rawUrl),
-                supabaseAnonKey: rawKey.trim(),
-                masterKey: masterKey.trim()
+                supabaseAnonKey: rawKey.trim()
             };
         }
 
@@ -513,20 +465,18 @@
             e.preventDefault();
             const url = document.getElementById('setupSupabaseUrl')?.value || document.getElementById('settingSupabaseUrl')?.value;
             const key = document.getElementById('setupSupabaseAnonKey')?.value || document.getElementById('settingSupabaseAnonKey')?.value;
-            const master = document.getElementById('setupMasterKey')?.value || document.getElementById('settingMasterKey')?.value;
 
             localStorage.setItem('cw_supabase_url', sanitizeSupabaseUrl(url));
             localStorage.setItem('cw_supabase_anon_key', key.trim());
-            localStorage.setItem('cw_master_key', master.trim());
 
             showToast('✅ 設定已更新，重新載入中...', 'success');
             setTimeout(() => {
-                window.location.search = `?key=${master.trim()}`;
+                window.location.href = window.location.pathname;
             }, 800);
         }
 
         function clearConfig() {
-            if (confirm('確定要清除儲存的 Supabase 與金鑰設定嗎？')) {
+            if (confirm('確定要清除儲存的 Supabase 連線設定嗎？')) {
                 localStorage.removeItem('cw_supabase_url');
                 localStorage.removeItem('cw_supabase_anon_key');
                 localStorage.removeItem('cw_master_key');
@@ -534,18 +484,11 @@
             }
         }
 
-        function submitAccessKey() {
-            const inputKey = document.getElementById('inputAccessKey').value.trim();
-            if (inputKey) {
-                window.location.search = `?key=${encodeURIComponent(inputKey)}`;
-            }
-        }
-
         function showView(viewId) {
-            document.getElementById('accessDeniedView').classList.add('hidden');
             document.getElementById('configNeededView').classList.add('hidden');
             document.getElementById('mainDashboard').classList.add('hidden');
-            document.getElementById(viewId).classList.remove('hidden');
+            const targetView = document.getElementById(viewId);
+            if (targetView) targetView.classList.remove('hidden');
 
             // 手機版底部導覽控制
             const mobileNav = document.getElementById('mobileBottomNav');
@@ -562,7 +505,6 @@
             if (document.getElementById('settingSupabaseUrl')) {
                 document.getElementById('settingSupabaseUrl').value = config.supabaseUrl;
                 document.getElementById('settingSupabaseAnonKey').value = config.supabaseAnonKey;
-                document.getElementById('settingMasterKey').value = config.masterKey;
             }
         }
 

@@ -2,7 +2,7 @@
 
 一個極簡、質感深色玻璃擬態 (Dark Glassmorphic) 的單頁 Web 應用程式 (SPA)，專為超商/咖啡館「預購記杯與每日領取」設計。
 
-支援部署於 **GitHub Pages**，並以 **Supabase PostgreSQL** 為後端資料庫，透過 **URL 金鑰 (`?key=...`)** 確保您的記杯隱私與存取權限。
+支援部署於 **GitHub Pages**，並以 **Supabase PostgreSQL** 為後端資料庫。
 
 ---
 
@@ -12,7 +12,7 @@
 2. **⚡ 一鍵快速扣杯 (-1)**：早上取杯時手機點一下立刻扣減。
 3. **🔢 多杯扣除 & 門市備註**：幫同事/朋友一次拿 2 杯以上時，可快選數量並輸入門市名稱。
 4. **✨ 動態新增品項與加購**：隨時新增全新咖啡品項（如「特大拿鐵 30 杯」）或針對舊品項加購。
-5. **🔒 URL 金鑰驗證 (Master Key)**：網址帶有 `?key=YOUR_SECRET` 才能解鎖存取，無金鑰或錯誤金鑰自動阻擋。
+5. **🔒 Supabase 安全驗證**：透過 Supabase Anon Key 直連後端資料庫，無需繁瑣設定即可安全存取。
 6. **📜 取杯歷程時間軸**：記錄每次取杯的時間、數量與備註，支援誤觸復原。
 
 ---
@@ -47,12 +47,12 @@
 
 ---
 
-## 🔑 開始使用與存取網址
+## 🔑 開始使用
 
-開啟網頁時，請在網址後方加上您設定的 Master Key 參數（預設為 `coffee123`）：
+首次開啟網頁時，點擊右上方 **⚙️ 設定** 圖示（或在初次連線設定畫面），填入您的 `Supabase URL` 與 `Supabase Anon Key` 即可開始使用！
 
+也可以使用包含設定參數的 URL 進行一鍵設定：
 ```text
-https://<YOUR_GITHUB_USERNAME>.github.io/CoffeeWallet2/?key=coffee123
+https://<YOUR_GITHUB_USERNAME>.github.io/CoffeeWallet2/?setup_url=YOUR_SUPABASE_URL&setup_anon=YOUR_ANON_KEY
 ```
 
-首次載入時，點擊右上方 **⚙️ 設定** 圖示，填入您的 `Supabase URL` 與 `Supabase Anon Key` 即可開始使用！
