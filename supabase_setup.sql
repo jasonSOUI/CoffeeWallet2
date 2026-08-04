@@ -44,14 +44,26 @@ CREATE POLICY "Allow public read and write access" ON public.coffee_logs
 -- 5. 插入初始預購咖啡資料
 INSERT INTO public.coffee_items (name, total_purchased, total_redeemed, category)
 VALUES 
-    ('大杯美式', 15, 0, '美式系列'),
-    ('特大美式', 25, 0, '美式系列'),
-    ('大杯特選美式', 23, 0, '特選系列')
+    ('大杯特選美式', 51, 6,  '特選系列'),
+    ('特大濃萃美式', 25, 9,  '濃萃系列'),
+    ('黑糖珍珠撞奶', 14, 0,  '特調系列'),
+    ('特大美式',     7,  1,  '美式系列'),
+    ('大杯拿鐵',     1,  0,  '拿鐵系列'),
+    ('大杯濃萃美式', 2,  1,  '濃萃系列'),
+    ('冰淇淋紅茶',   1,  0,  '特調系列')
 ON CONFLICT DO NOTHING;
 
 -- 6. 插入初始歷程紀錄
 INSERT INTO public.coffee_logs (item_name, type, quantity, note)
 VALUES 
-    ('大杯美式', 'create', 15, '初始預購 15 杯'),
-    ('特大美式', 'create', 25, '初始預購 25 杯'),
-    ('大杯特選美式', 'create', 23, '初始預購 23 杯');
+    ('大杯特選美式', 'create', 51, '初始購入 51 杯'),
+    ('大杯特選美式', 'redeem', 6,  '初始已取 6 杯'),
+    ('特大濃萃美式', 'create', 25, '初始購入 25 杯'),
+    ('特大濃萃美式', 'redeem', 9,  '初始已取 9 杯'),
+    ('黑糖珍珠撞奶', 'create', 14, '初始購入 14 杯'),
+    ('特大美式',     'create', 7,  '初始購入 7 杯'),
+    ('特大美式',     'redeem', 1,  '初始已取 1 杯'),
+    ('大杯拿鐵',     'create', 1,  '初始購入 1 杯'),
+    ('大杯濃萃美式', 'create', 2,  '初始購入 2 杯'),
+    ('大杯濃萃美式', 'redeem', 1,  '初始已取 1 杯'),
+    ('冰淇淋紅茶',   'create', 1,  '初始購入 1 杯');
