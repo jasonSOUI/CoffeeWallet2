@@ -343,6 +343,43 @@
         </button>
     </nav>
 
+    <!-- ⚠️ 二次確認取杯 Modal (防止誤觸) -->
+    <div id="confirmRedeemModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+        <div class="glass-modal max-w-sm w-full p-6 rounded-3xl shadow-2xl space-y-4 text-center animate-slide-up border border-amber-500/40">
+            <div class="w-14 h-14 bg-amber-500/15 text-amber-500 rounded-2xl flex items-center justify-center text-3xl mx-auto border border-amber-500/30">
+                ☕
+            </div>
+            <div>
+                <h3 class="text-lg font-bold dark:text-stone-100 text-stone-900">確認要取杯扣除嗎？</h3>
+                <p class="text-xs dark:text-stone-400 text-stone-500 mt-1">請確認您的兌換品項與數量</p>
+            </div>
+
+            <div class="p-3.5 rounded-2xl dark:bg-stone-900 bg-stone-100 border dark:border-stone-800 border-stone-200 text-left space-y-1.5">
+                <div class="flex justify-between items-center">
+                    <span class="text-xs dark:text-stone-400 text-stone-500">品項名稱：</span>
+                    <span id="confirmItemName" class="text-sm font-bold dark:text-amber-400 text-amber-600"></span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-xs dark:text-stone-400 text-stone-500">扣除數量：</span>
+                    <span id="confirmQuantity" class="text-sm font-black font-outfit text-amber-500"></span>
+                </div>
+                <div class="flex justify-between items-center border-t dark:border-stone-800 border-stone-200 pt-1.5 mt-1.5 text-[11px]">
+                    <span class="dark:text-stone-400 text-stone-500">扣除後剩餘：</span>
+                    <span id="confirmAfterRemaining" class="font-bold text-emerald-500"></span>
+                </div>
+            </div>
+
+            <div class="flex gap-2.5 pt-1">
+                <button type="button" onclick="closeModal('confirmRedeemModal')" class="flex-1 py-3 rounded-2xl dark:bg-stone-800 bg-stone-200 dark:text-stone-300 text-stone-700 font-bold text-xs tap-bounce">
+                    取消
+                </button>
+                <button type="button" onclick="confirmExecuteRedeem()" class="flex-1 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs tap-bounce shadow-lg shadow-amber-500/20">
+                    確定扣除 ☕
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- 📱 快速條碼 / 出示取杯大字彈窗 Modal -->
     <div id="showCodeModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-md transition-all duration-300">
         <div class="glass-modal max-w-md w-full p-6 rounded-t-3xl sm:rounded-3xl shadow-2xl space-y-5 animate-slide-up">
@@ -817,8 +854,14 @@
             }).join('');
         }
 
-        // ⚡ 5. 快速直接扣杯 (-1 杯)
-        async function handleDirectRedeemOne(itemId, itemName) {
+        // ⚡ 5. 取杯二次確認機制 (防止手滑誤觸)
+        let pendingRedeemTask = null;
+
+        function handleDirectRedeemOne(itemId, itemName) {
+            askConfirmRedeem(itemId, itemName, 1, '手機一鍵快速取杯');
+        }
+
+        function askConfirmRedeem(itemId, itemName, qty, note) {
             const item = coffeeItems.find(i => i.id === itemId);
             if (!item) return;
 
@@ -828,32 +871,29 @@
                 return;
             }
 
-            try {
-                // 1. 更新已取杯數
-                const newRedeemed = item.total_redeemed + 1;
-                const { error: updateErr } = await supabaseClient
-                    .from('coffee_items')
-                    .update({ total_redeemed: newRedeemed, updated_at: new Date().toISOString() })
-                    .eq('id', itemId);
-
-                if (updateErr) throw updateErr;
-
-                // 2. 寫入歷程紀錄
-                await supabaseClient
-                    .from('coffee_logs')
-                    .insert([{
-                        item_id: itemId,
-                        item_name: itemName,
-                        type: 'redeem',
-                        quantity: 1,
-                        note: '手機一鍵快速取杯'
-                    }]);
-
-                showToast(`🎉 已取用 1 杯 ${itemName}！剩餘 ${remaining - 1} 杯`, 'success');
-                fetchCoffeeData();
-            } catch (err) {
-                showToast(`❌ 扣杯失敗: ${err.message}`, 'error');
+            if (qty > remaining) {
+                showToast(`⚠️ 取杯數 (${qty} 杯) 超過剩餘量 (${remaining} 杯)`, 'error');
+                return;
             }
+
+            // 保存欲執行的取杯任務
+            pendingRedeemTask = { itemId, itemName, qty, note };
+
+            // 填寫確認彈窗資訊
+            document.getElementById('confirmItemName').innerText = itemName;
+            document.getElementById('confirmQuantity').innerText = `${qty} 杯`;
+            document.getElementById('confirmAfterRemaining').innerText = `${remaining - qty} 杯`;
+
+            openModal('confirmRedeemModal');
+        }
+
+        async function confirmExecuteRedeem() {
+            if (!pendingRedeemTask) return;
+            const task = pendingRedeemTask;
+            pendingRedeemTask = null;
+
+            closeModal('confirmRedeemModal');
+            await executeRedeem(task.itemId, task.itemName, task.qty, task.note);
         }
 
         // 📱 6. 展開出示取杯與條碼彈窗
@@ -876,7 +916,7 @@
         function quickRedeemAction(qty) {
             if (!activeItemForModal) return;
             closeModal('showCodeModal');
-            executeRedeem(activeItemForModal.id, activeItemForModal.name, qty, '出示快速扣減');
+            askConfirmRedeem(activeItemForModal.id, activeItemForModal.name, qty, '出示快速扣減');
         }
 
         function openMultiRedeemModalFromShowCode() {
@@ -897,7 +937,7 @@
             document.getElementById('multiRedeemQuantity').value = qty;
         }
 
-        async function handleMultiRedeemSubmit(e) {
+        function handleMultiRedeemSubmit(e) {
             e.preventDefault();
             const itemId = document.getElementById('multiRedeemItemId').value;
             const item = coffeeItems.find(i => i.id === itemId);
@@ -907,7 +947,7 @@
             const note = document.getElementById('multiRedeemNote').value;
 
             closeModal('multiRedeemModal');
-            await executeRedeem(itemId, item.name, qty, note);
+            askConfirmRedeem(itemId, item.name, qty, note);
         }
 
         async function executeRedeem(itemId, itemName, qty, note) {
