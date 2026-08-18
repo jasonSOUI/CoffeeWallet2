@@ -763,16 +763,41 @@
             document.getElementById('statTotalRedeemed').innerText = totalRedeemed;
             document.getElementById('statTotalRemaining').innerText = Math.max(0, totalRemaining);
 
-            // 依剩餘杯數排序
+            // 依剩餘杯數排序 (用於下方「目前庫存」卡片區)
             const sortedItems = [...coffeeItems].sort((a, b) => {
                 const remA = Math.max(0, a.total_purchased - a.total_redeemed);
                 const remB = Math.max(0, b.total_purchased - b.total_redeemed);
                 return remB - remA;
             });
 
-            // ⚡ A. 渲染特快取杯區 (Top 3 有剩餘數量的熱門品項)
+            // ⚡ A. 渲染特快取杯區 (最近使用過且有剩餘數量的品項優先)
             const quickContainer = document.getElementById('quickRedeemContainer');
-            const activeQuickItems = sortedItems.filter(i => (i.total_purchased - i.total_redeemed) > 0).slice(0, 3);
+
+            // 取得品項最新使用/變動時間戳記
+            const getLatestActivityTime = (item) => {
+                const latestLog = coffeeLogs.find(log => log.item_id === item.id);
+                if (latestLog && latestLog.created_at) {
+                    return new Date(latestLog.created_at).getTime();
+                }
+                if (item.updated_at) return new Date(item.updated_at).getTime();
+                if (item.created_at) return new Date(item.created_at).getTime();
+                return 0;
+            };
+
+            const activeQuickItems = [...coffeeItems]
+                .filter(i => (i.total_purchased - i.total_redeemed) > 0)
+                .sort((a, b) => {
+                    const timeA = getLatestActivityTime(a);
+                    const timeB = getLatestActivityTime(b);
+                    if (timeB !== timeA) {
+                        return timeB - timeA; // 最近使用過的排前面
+                    }
+                    // 時間相同時，依剩餘數量排序
+                    const remA = Math.max(0, a.total_purchased - a.total_redeemed);
+                    const remB = Math.max(0, b.total_purchased - b.total_redeemed);
+                    return remB - remA;
+                })
+                .slice(0, 3);
 
             if (activeQuickItems.length === 0) {
                 quickContainer.innerHTML = `<p class="text-xs dark:text-stone-500 text-stone-400 py-2">目前沒有可取杯的剩餘品項。</p>`;
@@ -1100,20 +1125,92 @@
                 }
 
                 return `
-                    <div class="glass-card p-3 rounded-2xl flex items-center justify-between border dark:border-stone-800 border-stone-200">
-                        <div>
+                    <div class="glass-card p-3 rounded-2xl flex items-center justify-between gap-2 border dark:border-stone-800 border-stone-200">
+                        <div class="flex-1 min-w-0">
                             <div class="flex items-center gap-1.5 mb-0.5">
                                 <span class="text-[10px] font-bold px-1.5 py-0.2 rounded-md border ${colorClass}">${badge}</span>
-                                <h4 class="text-xs font-bold dark:text-stone-200 text-stone-800">${escapeHtml(log.item_name)}</h4>
+                                <h4 class="text-xs font-bold dark:text-stone-200 text-stone-800 truncate">${escapeHtml(log.item_name)}</h4>
                             </div>
-                            <p class="text-[10px] dark:text-stone-400 text-stone-500">${dateStr} ${log.note ? '・' + escapeHtml(log.note) : ''}</p>
+                            <p class="text-[10px] dark:text-stone-400 text-stone-500 truncate">${dateStr} ${log.note ? '・' + escapeHtml(log.note) : ''}</p>
                         </div>
-                        <span class="text-sm font-black font-outfit ${log.type === 'redeem' ? 'text-amber-500' : 'text-emerald-500'}">
-                            ${log.type === 'redeem' ? '-' : '+'}${log.quantity} 杯
-                        </span>
+                        <div class="flex items-center gap-2 flex-shrink-0">
+                            <span class="text-sm font-black font-outfit ${log.type === 'redeem' ? 'text-amber-500' : 'text-emerald-500'}">
+                                ${log.type === 'redeem' ? '-' : '+'}${log.quantity} 杯
+                            </span>
+                            <button onclick="confirmDeleteLog('${log.id}')" title="刪除此筆紀錄" class="p-1.5 rounded-lg text-stone-400 hover:text-red-500 hover:bg-red-500/10 tap-bounce text-xs transition-colors">
+                                🗑️
+                            </button>
+                        </div>
                     </div>
                 `;
             }).join('');
+        }
+
+        async function confirmDeleteLog(logId) {
+            const log = coffeeLogs.find(l => l.id === logId);
+            if (!log) return;
+
+            let typeText = '紀錄';
+            if (log.type === 'redeem') typeText = '取杯扣除';
+            else if (log.type === 'topup') typeText = '加購累加';
+            else if (log.type === 'create') typeText = '建立品項';
+
+            if (!confirm(`確定要刪除這筆【${log.item_name}】的 ${typeText} (${log.quantity} 杯) 紀錄嗎？\n刪除後將同步更新品項數量。`)) {
+                return;
+            }
+
+            await deleteHistoryLog(logId);
+        }
+
+        async function deleteHistoryLog(logId) {
+            const log = coffeeLogs.find(l => l.id === logId);
+            if (!log) return;
+
+            try {
+                // 若有關聯品項，嘗試同向/反向修正品項數量
+                if (log.item_id) {
+                    const item = coffeeItems.find(i => i.id === log.item_id);
+                    if (item) {
+                        let updatedPurchased = item.total_purchased;
+                        let updatedRedeemed = item.total_redeemed;
+
+                        if (log.type === 'redeem') {
+                            // 刪除取杯紀錄 -> 復原 (減少) 已取杯數
+                            updatedRedeemed = Math.max(0, item.total_redeemed - log.quantity);
+                        } else if (log.type === 'topup' || log.type === 'create') {
+                            // 刪除加購/新增紀錄 -> 扣減 (減少) 購入杯數
+                            updatedPurchased = Math.max(0, item.total_purchased - log.quantity);
+                        }
+
+                        const { error: itemUpdateErr } = await supabaseClient
+                            .from('coffee_items')
+                            .update({
+                                total_purchased: updatedPurchased,
+                                total_redeemed: updatedRedeemed,
+                                updated_at: new Date().toISOString()
+                            })
+                            .eq('id', log.item_id);
+
+                        if (itemUpdateErr) console.warn('更新品項數量失敗:', itemUpdateErr);
+                    }
+                }
+
+                // 刪除該筆歷程紀錄
+                const { error: deleteErr } = await supabaseClient
+                    .from('coffee_logs')
+                    .delete()
+                    .eq('id', logId);
+
+                if (deleteErr) throw deleteErr;
+
+                showToast('🗑️ 成功刪除紀錄！', 'success');
+                
+                // 重新載入資料並更新 Modal 歷史紀錄
+                await fetchCoffeeData();
+                renderHistoryLogs();
+            } catch (err) {
+                showToast(`❌ 刪除紀錄失敗: ${err.message}`, 'error');
+            }
         }
 
         function openModal(modalId) {
